@@ -1,5 +1,6 @@
 # ----------------- Import Libraries ----------------- #
 import torch
+from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
@@ -69,6 +70,64 @@ print(f"Length of Test dataloader: {len(test_loader)}, batches of {BATCH_SIZE}."
 print("The dataset is balanced with approximately 50% of images from each class (male and female).")
 
 
+# ----------------- Building the Model ----------------- #
+class GenderClassifier(nn.Module):
+    """
+    Simple CNN model with 3 convolutional layers for feature extraction 
+    and 1 fully connected layer for binary classification (e.g., male vs female).
+    """
+    def __init__(self, hidden_units: int, kernel_size: int, step_size: int, pool_kernel_size: int):
+        super().__init__()
+
+        self.conv_block_1 = nn.Sequential(
+            nn.Conv2d(in_channels=3,  # Number of input channels, 3 for RGB images.
+                      out_channels=hidden_units,  # Number of filters (feature maps) the layer will produce. ("num neurons")
+                      kernel_size=kernel_size,  # Size of each filter (e.g., 3 means 3×3 kernels).
+                      stride=step_size,  # How many pixels the filter moves at each step (1 = move one pixel at a time)
+                      padding=0   # No padding here since images were already padded during dataset preparation to fit 100×128.
+            ),  
+            nn.ReLU(),  
+            nn.MaxPool2d(kernel_size=pool_kernel_size)  # Window size, Take only the max vaue from each window step    
+        )
+
+        self.conv_block_2 = nn.Sequential(
+            nn.Conv2d(in_channels=hidden_units,
+                      out_channels=hidden_units, 
+                      kernel_size=kernel_size, 
+                      stride=step_size,  
+                      padding=3  
+            ),  
+            nn.ReLU(),  
+            nn.MaxPool2d(kernel_size=pool_kernel_size)    
+        )
+
+        self.conv_block_3 = nn.Sequential(
+            nn.Conv2d(in_channels=hidden_units,
+                      out_channels=hidden_units, 
+                      kernel_size=kernel_size, 
+                      stride=step_size,  
+                      padding=3  
+            ),  
+            nn.ReLU(),  
+            nn.MaxPool2d(kernel_size=pool_kernel_size)    
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features=7*7*hidden_units, # This one is not easy to find. do it with testing with randn tensore in same shape as the images in dataset
+                      out_features=1  # Binary classification
+            )
+        )
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through the model."""
+        x = self.conv_block_1(x)
+        x = self.conv_block_2(x)
+        x = self.conv_block_3(x)
+        print(f"Shape after conv layers: {x.shape}")
+        x = self.classifier(x)
+        return x
 
 
 
