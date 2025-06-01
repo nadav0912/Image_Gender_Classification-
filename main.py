@@ -17,8 +17,14 @@ print(f"Using {device} deivce")
 # ----------------- Hyperparameters ----------------- #
 CLASS_NAMES = ["male", "female"]
 
-BATCH_SIZE = 32
+RANDOM_SEED = 142  # Seed for reproducibility
 
+BATCH_SIZE = 32
+EPOCHS = 10
+HIDDEN_UNITS = 64  # Number of filters in the convolutional layers
+KERNEL_SIZE = 3  # Size of the convolutional filters (3x3)
+STEP_SIZE = 1  # Stride of the convolutional filters (1 pixel step)
+POOL_KERNEL_SIZE = 2  # Size of the max pooling window (2x2)
 
 
 # ----------------- Dataset Information ----------------- #
@@ -57,10 +63,13 @@ train_dataset = datasets.ImageFolder(root='data/train', transform=transform)
 val_dataset   = datasets.ImageFolder(root='data/valid', transform=transform)
 test_dataset  = datasets.ImageFolder(root='data/test', transform=transform)
 
+print(f"Label map of datset: {train_dataset.class_to_idx}")
+
 plot_images_examples(datset=train_dataset, class_names=CLASS_NAMES)
 
 
 # Create DataLoaders
+torch.manual_seed(RANDOM_SEED)  # Set random seed for reproducibility
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 val_loader   = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 test_loader  = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
@@ -112,9 +121,16 @@ class GenderClassifier(nn.Module):
             nn.MaxPool2d(kernel_size=pool_kernel_size)    
         )
 
-        self.classifier = nn.Sequential(
+        self.fully_connected_1 = nn.Sequential(
+            nn.Flatten(),  # Flatten the output from the convolutional layers to feed into the fully connected layer
+            nn.Linear(in_features=15*18*hidden_units,  # Number of input features, calculated based on the output size of conv layers
+                      out_features=hidden_units // 2),  
+            nn.ReLU()  
+        )
+
+        self.fully_connected_2 = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(in_features=7*7*hidden_units, # This one is not easy to find. do it with testing with randn tensore in same shape as the images in dataset
+            nn.Linear(in_features=hidden_units // 2, 
                       out_features=1  # Binary classification
             )
         )
@@ -125,10 +141,27 @@ class GenderClassifier(nn.Module):
         x = self.conv_block_1(x)
         x = self.conv_block_2(x)
         x = self.conv_block_3(x)
-        print(f"Shape after conv layers: {x.shape}")
-        x = self.classifier(x)
+        #print(f"Shape after conv layers: {x.shape}")
+        x = self.fully_connected_1(x)
+        x = self.fully_connected_2(x)
         return x
+    
 
+# Create model instance
+model = GenderClassifier(hidden_units=HIDDEN_UNITS,
+                        kernel_size=KERNEL_SIZE,
+                        step_size=STEP_SIZE,
+                        pool_kernel_size=POOL_KERNEL_SIZE).to(device)
+
+
+# Test the model with a random input, and check shape needed for the first fully connected layer
+model.eval() 
+with torch.no_grad():
+    sample_input = torch.randn(1, 3, 100, 128).to(device)  # Random input tensor with shape (batch_size, channels, height, width)
+    sample_logits = model(sample_input)  # Forward pass
+    print(f"Sample logits shape: {sample_logits.shape}")  # Should be (1, 1) for binary classification
+
+# We get print from the forword func of torch.Size([1, 64, 15, 18]) wich means each image is reduced to 15x18 feature maps after the convolutional layers.
 
 
 
