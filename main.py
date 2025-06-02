@@ -3,6 +3,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+from tqdm import tqdm  # For progress bar
 
 from utils import plot_image_size_distribution, pad_to_100x128, plot_images_examples
 
@@ -26,6 +27,7 @@ KERNEL_SIZE = 3  # Size of the convolutional filters (3x3)
 STEP_SIZE = 1  # Stride of the convolutional filters (1 pixel step)
 POOL_KERNEL_SIZE = 2  # Size of the max pooling window (2x2)
 
+LERRNING_RATE = 0.001  # Learning rate for the optimizer
 
 # ----------------- Dataset Information ----------------- #
 """
@@ -70,9 +72,9 @@ plot_images_examples(datset=train_dataset, class_names=CLASS_NAMES)
 
 # Create DataLoaders
 torch.manual_seed(RANDOM_SEED)  # Set random seed for reproducibility
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
-val_loader   = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
-test_loader  = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_loader   = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+test_loader  = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 print(f"\nLength of Train dataloader: {len(train_loader)}, batches of {BATCH_SIZE}.")
 print(f"Length of Test dataloader: {len(test_loader)}, batches of {BATCH_SIZE}.")
@@ -162,6 +164,75 @@ with torch.no_grad():
     print(f"Sample logits shape: {sample_logits.shape}")  # Should be (1, 1) for binary classification
 
 # We get print from the forword func of torch.Size([1, 64, 15, 18]) wich means each image is reduced to 15x18 feature maps after the convolutional layers.
+
+
+# Binary Cross Entropy with Logits Loss For binary classification
+loss_fn = nn.BCEWithLogitsLoss()
+
+# Function to calculate accuracy
+def accuracy_fn(y_true, y_pred):
+    correct = torch.eq(y_true,  y_pred).sum().item()
+    acc = correct / len(y_pred) * 100
+    return acc
+
+# Adam optimizer for training the model
+optimizer = torch.optim.Adam(params=model.parameters(), lr=LERRNING_RATE)
+
+
+# Training loop
+def train():
+    model.train()
+    total_loss, total_acc = 0, 0
+
+    for batch, labels in tqdm(train_loader):
+        print(batch.shape, labels.shape)  # Debugging: Check batch and labels shapes
+        # Move data to device
+        labels = labels.to(device)
+        batch = batch.to(device)
+
+        # Forward pass
+        logits = model(batch)
+        print(f"Logits shape: {logits.shape}")  # Should be [batch_size, 1] for binary classification
+        loss = loss_fn(logits, labels)
+        total_loss += loss.item()
+
+        # Backward pass
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # Calculate accuracy
+        y_pred = torch.round(torch.sigmoid(logits))
+        total_acc += accuracy_fn(y_true=labels, y_pred=y_pred)
+
+    return total_loss / len(train_loader), total_acc / len(train_loader)
+
+
+def evaluate():
+    model.eval()
+    total_loss, total_acc = 0, 0
+
+    with torch.no_grad():
+        for batch, labels in tqdm(val_loader):
+            # Move data to device
+            labels = labels.to(device)
+            batch = batch.to(device)
+
+            # Forward pass
+            logits = model(batch)
+            loss = loss_fn(logits, labels)
+            total_loss += loss.item()
+
+            # Calculate accuracy
+            y_pred = torch.round(torch.sigmoid(logits))
+            total_acc += accuracy_fn(y_true=labels, y_pred=y_pred)
+
+    return total_loss / len(val_loader), total_acc / len(val_loader)
+
+train_loss, train_acc = train()
+print(f"Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc:.2f}%")
+
+
 
 
 
